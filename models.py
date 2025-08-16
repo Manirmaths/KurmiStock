@@ -2,16 +2,21 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
 from extensions import db, login_manager
+import pytz
+
+WAT = pytz.timezone("Africa/Lagos")  
 
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
     store_name = db.Column(db.String(120))
-    locale = db.Column(db.String(10), default="en")
+    password_hash = db.Column(db.String(128))
 
-    def set_password(self, pw): self.password_hash = generate_password_hash(pw)
-    def check_password(self, pw): return check_password_hash(self.password_hash, pw)
+    def set_password(self, pw):
+        self.password_hash = generate_password_hash(pw)
+
+    def check_password(self, pw):
+        return check_password_hash(self.password_hash, pw)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -19,38 +24,46 @@ def load_user(user_id):
 
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    sku = db.Column(db.String(64), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, index=True, nullable=False)
+    sku = db.Column(db.String(64), unique=False, nullable=False)
     name = db.Column(db.String(200), nullable=False)
     category = db.Column(db.String(120))
     unit = db.Column(db.String(20), default="unit")
-    barcode = db.Column(db.String(128), unique=True)
+    barcode = db.Column(db.String(128))
     reorder_point = db.Column(db.Integer, default=0)
     expiry_date = db.Column(db.Date, nullable=True)
-    unit_price = db.Column(db.Float, default=0)  # ← NEW: default selling price
-
+    unit_price = db.Column(db.Float, default=0)
+    created_at = db.Column(
+        db.DateTime, 
+        default=lambda: datetime.now(WAT)   # ✅ saves in West Africa Time
+    )
 
 class StockMovement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, index=True, nullable=False)  # NEW
     product_id = db.Column(db.Integer, db.ForeignKey("product.id"), nullable=False, index=True)
     qty = db.Column(db.Integer, nullable=False)
     type = db.Column(db.String(10), nullable=False)  # IN, OUT, ADJUST
-    source = db.Column(db.String(20))                # purchase, sale, manual
+    source = db.Column(db.String(20))
     unit_cost = db.Column(db.Float, nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     product = db.relationship("Product", backref="movements")
 
 class Supplier(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, index=True, nullable=False)  # NEW
     name = db.Column(db.String(200), nullable=False)
     phone = db.Column(db.String(50))
     location = db.Column(db.String(200))
 
 class Purchase(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, index=True, nullable=False)  # NEW
     supplier_id = db.Column(db.Integer, db.ForeignKey("supplier.id"), nullable=True)
     total_cost = db.Column(db.Float, default=0)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     supplier = db.relationship("Supplier")
+
 class PurchaseItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     purchase_id = db.Column(db.Integer, db.ForeignKey("purchase.id"), nullable=False)
@@ -62,8 +75,10 @@ class PurchaseItem(db.Model):
 
 class Sale(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, index=True, nullable=False)  # NEW
     total_amount = db.Column(db.Float, default=0)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
 class SaleItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sale_id = db.Column(db.Integer, db.ForeignKey("sale.id"), nullable=False)

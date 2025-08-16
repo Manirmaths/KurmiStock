@@ -33,9 +33,20 @@
     <div class="righttools">
       <span id="offlineBadge" hidden class="badge warn">Offline</span>
       {% if current_user.is_authenticated %}
-        <form method="post" action="/auth/logout">
-          <button class="btn ghost" title="Sign out">⎋ Logout</button>
-        </form>
+        <form method="post" action="{{ url_for('auth.logout_post') }}" onsubmit="return handleLogout(event)">
+  <button class="btn ghost" title="Sign out">⎋ Logout</button>
+</form>
+<script>
+async function handleLogout(e){
+  e.preventDefault();
+  try { await fetch(e.target.action, { method: 'POST', credentials: 'same-origin' }); } catch {}
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage('CLEAR_CACHES');
+  }
+  location.replace('{{ url_for("auth.login_form") }}');
+  return false;
+}
+</script>
       {% endif %}
     </div>
   </header>
@@ -54,5 +65,6 @@
       navigator.serviceWorker.register('{{ url_for("static", filename="service-worker.js") }}');
     }
   </script>
+  
 </body>
 </html>

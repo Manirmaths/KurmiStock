@@ -140,3 +140,82 @@ body{
 }
 .modal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:.6rem}
 .modal[hidden]{display:none}
+
+/* Auth pages styling (works with your dark theme too) */
+.auth-container{
+  min-height:70vh; display:grid; place-items:center;
+}
+.auth-card{
+  width:min(440px, 92vw);
+  background:linear-gradient(180deg,#0f172a,#0c1323);
+  border:1px solid var(--border); border-radius:16px;
+  padding:1.2rem 1rem;
+}
+.auth-title{margin:.25rem 0 1rem; text-align:center; font-size:1.25rem}
+.auth-form{display:grid; gap:.75rem}
+.auth-form label{display:grid; gap:.35rem; font-weight:600; color:#cbd5e1}
+.auth-form input{
+  padding:.55rem .7rem; border-radius:.6rem; border:1px solid var(--border);
+  background:#0b1220; color:var(--text);
+}
+.auth-footer{margin-top:.9rem; text-align:center; color:var(--muted)}
+.auth-footer a{color:#93c5fd; text-decoration:none}
+.auth-footer a:hover{text-decoration:underline}
+.hint{color:var(--muted); font-size:.85rem}
+/* Landing hero */
+.hero-landing{
+  display:grid; gap:1.2rem; align-items:center;
+  grid-template-columns: 1.1fr .9fr;
+  padding:1.25rem 1rem;
+}
+@media (max-width:900px){ .hero-landing{ grid-template-columns:1fr; } }
+
+.landing-title{ font-size:2rem; margin:.25rem 0 .5rem; letter-spacing:.2px }
+.landing-sub{ color:var(--muted); max-width:48ch; margin:0 0 .6rem }
+.landing-note{ color:var(--muted); display:block; margin-top:.35rem }
+
+.hero-right{ display:grid; place-items:center; }
+.mock{
+  width:min(520px, 92vw);
+  border:1px solid var(--border); border-radius:18px;
+  background:linear-gradient(180deg,#0f172a,#0b1220);
+  box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  overflow:hidden;
+  transform: translateZ(0);
+  animation: floaty 6s ease-in-out infinite;
+}
+@keyframes floaty { 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-6px) } }
+.mock-head{ display:flex; gap:.35rem; padding:.6rem .7rem; background:#0b1220; border-bottom:1px solid var(--border)}
+.mock-head span{ width:.6rem; height:.6rem; border-radius:50%; display:inline-block; background:#334155 }
+.mock-body{ padding:.9rem; display:grid; gap:.8rem }
+.mock-card{ border:1px solid var(--border); border-radius:12px; padding:.7rem; display:flex; justify-content:space-between; background:#0c1323 }
+.mock-card b{ color:#cbd5e1 } .mock-card em{ font-style:normal; color:#22c55e }
+.mock-table{ border:1px solid var(--border); border-radius:12px; overflow:hidden }
+.mock-table .row{ display:grid; grid-template-columns:1.2fr 1.6fr .8fr 1fr; gap:.5rem; padding:.55rem .7rem; border-top:1px solid var(--border) }
+.mock-table .head{ background:#0b1220; color:#cbd5e1; font-weight:600; border-top:none }
+.warnpill{ background:rgba(245,158,11,.15); padding:.15rem .45rem; border-radius:999px; border:1px solid rgba(245,158,11,.4) }
+
+/* Value strip */
+.value-strip{ display:grid; grid-template-columns:repeat(5,1fr); gap:.6rem; margin:1rem 0 }
+@media (max-width:900px){ .value-strip{ grid-template-columns:1fr 1fr 1fr; } }
+@media (max-width:640px){ .value-strip{ grid-template-columns:1fr 1fr; } }
+.value-item{
+  text-align:center; padding:.5rem .6rem; border:1px solid var(--border); border-radius:10px;
+  background:linear-gradient(180deg,#0f172a,#0c1323); color:#cbd5e1
+}
+
+/* Feature cards */
+.features3{ grid-template-columns:repeat(3, minmax(0,1fr)); margin:1rem 0 }
+@media (max-width:900px){ .features3{ grid-template-columns:1fr 1fr } }
+@media (max-width:640px){ .features3{ grid-template-columns:1fr } }
+.feature{ min-height:160px; }
+.feature .icon{ font-size:1.4rem; margin-bottom:.25rem }
+
+/* How/steps */
+.how h2{ margin:.3rem 0 .6rem }
+.steps{ margin:.2rem 0 0 1rem; color:#cbd5e1; line-height:1.5 }
+.steps li{ margin:.25rem 0 }
+
+/* CTA block */
+.cta{ text-align:center }
+.cta h3{ margin:.2rem 0 .3rem }

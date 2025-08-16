@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-container">
+  <div class="auth-card">
+    <h2 class="auth-title">Create an account</h2>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% if msgs %}
+        <div style="margin-bottom:.75rem">
+          {% for cat, msg in msgs %}
+            <div class="toast {{ 'err' if cat in ['danger','error'] else ('ok' if cat=='ok' else '') }}" style="margin:0 0 .5rem 0">
+              <h5>{{ msg }}</h5>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+<form method="post" action="{{ url_for('auth.register_post') }}" class="auth-form" id="regForm">
+  <label>Store / Business name
+    <input name="store_name" required>
+  </label>
+
+  <label>Email address
+    <input type="email" name="email" id="email" required>
+    <small id="emailHint" style="color:#fbbf24; display:none">Checking…</small>
+  </label>
+
+  <label>Password
+    <input type="password" name="password" id="pwd" required minlength="6">
+    <div id="pwdMeter" style="height:8px; border:1px solid var(--border); border-radius:6px; overflow:hidden">
+      <div id="pwdFill" style="height:100%; width:0%"></div>
+    </div>
+    <small id="pwdHint" style="color:#94a3b8">Use 8+ chars, mix of letters, numbers, symbol.</small>
+  </label>
+
+  <label>Confirm password
+    <input type="password" name="confirm_password" id="pwd2" required minlength="6">
+    <small id="matchHint" style="display:none">Passwords don’t match.</small>
+  </label>
+
+  <button type="submit" class="btn-primary" id="submitBtn">Sign up</button>
+</form>
+
+<script>
+(function(){
+  const email = document.getElementById('email');
+  const emailHint = document.getElementById('emailHint');
+  const pwd = document.getElementById('pwd');
+  const pwd2 = document.getElementById('pwd2');
+  const meter = document.getElementById('pwdMeter');
+  const fill = document.getElementById('pwdFill');
+  const matchHint = document.getElementById('matchHint');
+  const submitBtn = document.getElementById('submitBtn');
+
+  // Email uniqueness check (debounced)
+  let t=null;
+  email.addEventListener('input', ()=>{
+    const v = (email.value||'').trim().toLowerCase();
+    emailHint.style.display = v ? '' : 'none';
+    emailHint.textContent = 'Checking…';
+    if(t) clearTimeout(t);
+    t = setTimeout(async ()=>{
+      if(!v){ emailHint.style.display='none'; return; }
+      try{
+        const r = await fetch(`/auth/check_email?email=${encodeURIComponent(v)}`);
+        const j = await r.json();
+        if(j.available){ emailHint.style.color = '#22c55e'; emailHint.textContent = 'Email available ✔'; }
+        else { emailHint.style.color = '#ef4444'; emailHint.textContent = 'Email already registered ✖'; }
+      }catch(_){
+        emailHint.style.color = '#f59e0b'; emailHint.textContent = 'Could not verify right now';
+      }
+    }, 300);
+  });
+
+  // Password strength
+  function score(p){
+    let s = 0;
+    if(p.length >= 8) s += 1;
+    if(/[a-z]/.test(p) && /[A-Z]/.test(p)) s += 1;
+    if(/\d/.test(p)) s += 1;
+    if(/[^A-Za-z0-9]/.test(p)) s += 1;
+    if(p.length >= 12) s += 1;
+    return Math.min(s,4); // 0..4
+  }
+  function setBar(k){
+    const pct = [0, 25, 50, 75, 100][k];
+    fill.style.width = pct + '%';
+    // color: red → orange → yellow → green
+    const colors = ['#ef4444','#f59e0b','#fbbf24','#22c55e','#16a34a'];
+    fill.style.background = colors[k];
+  }
+  pwd.addEventListener('input', ()=>{
+    setBar(score(pwd.value||''));
+    checkMatch();
+  });
+
+  function checkMatch(){
+    const same = (pwd.value || '') === (pwd2.value || '');
+    matchHint.style.display = same ? 'none' : '';
+    matchHint.style.color = '#ef4444';
+    submitBtn.disabled = !same;
+  }
+  pwd2.addEventListener('input', checkMatch);
+})();
+</script>
+
+
+    <p class="auth-footer">
+      Already have an account?
+      <a href="{{ url_for('auth.login_form') }}">Sign in</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

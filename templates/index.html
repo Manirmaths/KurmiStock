@@ -1,4 +1,79 @@
 {% extends "base.html" %}
 {% block content %}
-  <p>Welcome. Go to <a href="/dashboard">Dashboard</a>.</p>
+
+<!-- HERO -->
+<section class="hero hero-landing">
+  <div class="hero-left">
+    <h1 class="landing-title">KurmiStock</h1>
+    <p class="landing-sub">
+      Simple, fast inventory for African SMEs — barcode-friendly, offline-first,
+      and smart reorder suggestions so you never stock out.
+    </p>
+
+    {% if current_user.is_authenticated %}
+      <div class="actions">
+        <a class="btn primary" href="/dashboard">🚀 Go to Dashboard</a>
+        <a class="btn" href="/sales?view=history">🧾 View Sales</a>
+      </div>
+    {% else %}
+      <div class="actions">
+        <a class="btn primary" href="{{ url_for('auth.register_form') }}">✨ Get started free</a>
+        <a class="btn" href="{{ url_for('auth.login_form') }}">🔐 Sign in</a>
+      </div>
+      <small class="landing-note">
+        No credit card. Works great on low-end devices and spotty internet.
+      </small>
+    {% endif %}
+  </div>
+
+  
+  </div>
+</section>
+
+<!-- VALUE STRIP -->
+<section class="value-strip">
+  <div class="value-item">⚡ Fast to learn</div>
+  <div class="value-item">📶 Offline-first</div>
+  <div class="value-item">📦 Barcode-ready</div>
+  <div class="value-item">🤖 AI reorder tips</div>
+  <div class="value-item">🌍 Built for Africa</div>
+</section>
+
+<!-- FEATURES -->
+<section class="grid features3">
+  <article class="card feature">
+    <div class="icon">🧮</div>
+    <h3>Clear stock control</h3>
+    <p>Add products with price, quantity & expiry. See live balances and low-stock alerts.</p>
+  </article>
+  <article class="card feature">
+    <div class="icon">🧾</div>
+    <h3>Quick sales & purchases</h3>
+    <p>POS-style cart for sales. Receiving updates stock & cost in one click.</p>
+  </article>
+  <article class="card feature">
+    <div class="icon">🔔</div>
+    <h3>Smart reorder</h3>
+    <p>Simple forecasts + reorder suggestions so you restock at the right time.</p>
+  </article>
+</section>
+
+<!-- CTA -->
+<section class="cta panel">
+  {% if current_user.is_authenticated %}
+    <h3>Ready to manage today’s stock?</h3>
+    <div class="actions">
+      <a class="btn primary" href="/dashboard">Open dashboard</a>
+      <a class="btn" href="/products">Add a product</a>
+    </div>
+  {% else %}
+    <h3>Start in under a minute</h3>
+    <p class="subtitle">Works on any device. Offline friendly.</p>
+    <div class="actions">
+      <a class="btn primary" href="{{ url_for('auth.register_form') }}">Create free account</a>
+      <a class="btn" href="{{ url_for('auth.login_form') }}">I already have one</a>
+    </div>
+  {% endif %}
+</section>
+
 {% endblock %}

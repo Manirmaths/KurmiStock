@@ -1,27 +1,88 @@
 from flask import Blueprint, request, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
+from datetime import datetime
 from sqlalchemy import func
 from extensions import db
 from models import Product, StockMovement, Sale, SaleItem, Purchase, PurchaseItem
 from forecasting import forecast_demand
-
+from sqlalchemy.orm import joinedload
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
-@api_bp.get("/products")
+from flask_login import login_required, current_user
+from sqlalchemy import func
+
+
+
+
+
+@api_bp.get("/stock")
 @login_required
-def list_products():
-    products = Product.query.order_by(Product.name).all()
-    return jsonify([{
-        "id": p.id,
-        "sku": p.sku,
-        "name": p.name,
-        "unit": p.unit,              # ← add this
-        "barcode": p.barcode,
-        "reorder_point": p.reorder_point,
-        "unit_price": p.unit_price
-    } for p in products])
+def stock_balances():
+    # Only this user's movements
+    rows = (db.session.query(StockMovement.product_id, func.sum(StockMovement.qty))
+            .filter(StockMovement.user_id == current_user.id)
+            .group_by(StockMovement.product_id).all())
+    balances = {pid: int(total or 0) for pid, total in rows}
+    products = Product.query.filter_by(user_id=current_user.id).all()
+    out = []
+    for p in products:
+        out.append({
+            "product_id": p.id, "name": p.name, "sku": p.sku,
+            "stock": balances.get(p.id, 0), "reorder_point": p.reorder_point
+        })
+    return jsonify(out)
 
+@api_bp.post("/sales")
+@login_required
+def create_sale():
+    data = request.json or {}
+    items = data.get("items", [])
+    # Validate items belong to user
+    pids = [i["product_id"] for i in items]
+    owned = {p.id for p in Product.query.filter(Product.id.in_(pids), Product.user_id==current_user.id).all()}
+    if not set(pids).issubset(owned):
+        return jsonify({"error":"One or more items are invalid"}), 400
 
+    sale = Sale(user_id=current_user.id, total_amount=sum(i["qty"]*i["unit_price"] for i in items))
+    db.session.add(sale); db.session.flush()
+    for it in items:
+        db.session.add(SaleItem(sale_id=sale.id, product_id=it["product_id"], qty=it["qty"], unit_price=it["unit_price"]))
+        db.session.add(StockMovement(user_id=current_user.id, product_id=it["product_id"], qty=-abs(it["qty"]), type="OUT", source="sale"))
+    db.session.commit()
+    return jsonify({"sale_id": sale.id})
+
+@api_bp.get("/sales_list")
+@login_required
+def sales_list():
+    try:
+        limit = int(request.args.get("limit", 50))
+    except ValueError:
+        limit = 50
+
+    sales = (
+        Sale.query.filter_by(user_id=current_user.id)
+        .options(
+            joinedload(Sale.items).joinedload(SaleItem.product)  # eager load items + product
+        )
+        .order_by(Sale.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+
+    out = []
+    for s in sales:
+        out.append({
+            "id": s.id,
+            "timestamp": s.timestamp.isoformat(),
+            "total_amount": float(s.total_amount or 0),
+            "items": [{
+                "product_id": i.product_id,
+                "name": (i.product.name if i.product else ""),
+                "qty": int(i.qty or 0),
+                "unit_price": float(i.unit_price or 0),
+            } for i in (s.items or [])]
+        })
+    return jsonify(out), 200
 
 @api_bp.post("/products")
 @login_required
@@ -29,79 +90,85 @@ def create_product():
     data = request.json or {}
     unit_price = float(data.get("unit_price") or 0)
     opening_stock = int(data.get("opening_stock") or 0)
+    expiry_date = data.get("expiry_date")  # "YYYY-MM-DD" or null
+
+    # per-user SKU uniqueness
+    if Product.query.filter_by(user_id=current_user.id, sku=data["sku"]).first():
+        return jsonify({"error":"SKU already exists"}), 400
 
     p = Product(
+        user_id=current_user.id,
         sku=data["sku"],
         name=data["name"],
         category=data.get("category"),
         unit=data.get("unit", "unit"),
         barcode=data.get("barcode"),
         reorder_point=data.get("reorder_point", 0),
-        unit_price=unit_price
+        unit_price=unit_price,
+        expiry_date=datetime.strptime(expiry_date, "%Y-%m-%d").date() if expiry_date else None,
     )
     db.session.add(p); db.session.flush()
 
-    # If opening stock > 0, create an IN stock movement
     if opening_stock > 0:
-        mv = StockMovement(product_id=p.id, qty=opening_stock, type="IN", source="opening")
-        db.session.add(mv)
+        db.session.add(StockMovement(
+            user_id=current_user.id,
+            product_id=p.id,
+            qty=opening_stock,
+            type="IN",
+            source="opening",
+        ))
 
     db.session.commit()
     return jsonify({"id": p.id}), 201
 
 
-@api_bp.get("/stock")
+@api_bp.get("/products")
 @login_required
-def stock_balances():
-    rows = (db.session.query(StockMovement.product_id, func.sum(StockMovement.qty))
-            .group_by(StockMovement.product_id).all())
-    balances = {pid: int(total or 0) for pid, total in rows}
-    # attach product names
-    products = Product.query.all()
-    out = []
-    for p in products:
-        out.append({
-            "product_id": p.id,
-            "name": p.name,
-            "sku": p.sku,
-            "stock": balances.get(p.id, 0),
-            "reorder_point": p.reorder_point
-        })
-    return jsonify(out)
+def list_products():
+    products = Product.query.filter_by(user_id=current_user.id).order_by(Product.name).all()
+    return jsonify([{
+        "id": p.id, "sku": p.sku, "name": p.name, "unit": p.unit,
+        "barcode": p.barcode, "reorder_point": p.reorder_point,
+        "unit_price": p.unit_price,
+        "expiry_date": p.expiry_date.isoformat() if p.expiry_date else None,
+        "created_at": p.created_at.isoformat() if p.created_at else None
+    } for p in products])
 
-@api_bp.post("/sales")
-@login_required
-def create_sale():
-    data = request.json
-    items = data["items"]  # [{product_id, qty, unit_price}]
-    sale = Sale(total_amount=sum(i["qty"]*i["unit_price"] for i in items))
-    db.session.add(sale); db.session.flush()
-    for it in items:
-        si = SaleItem(sale_id=sale.id, product_id=it["product_id"],
-                      qty=it["qty"], unit_price=it["unit_price"])
-        db.session.add(si)
-        mv = StockMovement(product_id=it["product_id"], qty=-abs(it["qty"]),
-                           type="OUT", source="sale")
-        db.session.add(mv)
-    db.session.commit()
-    return jsonify({"sale_id": sale.id})
+
 
 @api_bp.post("/purchases")
 @login_required
 def create_purchase():
-    data = request.json
-    items = data["items"]  # [{product_id, qty, unit_cost}]
-    purchase = Purchase(total_cost=sum(i["qty"]*i["unit_cost"] for i in items))
+    data = request.json or {}
+    items = data.get("items", [])
+    pids = [i["product_id"] for i in items]
+    owned = {p.id for p in Product.query.filter(Product.id.in_(pids), Product.user_id==current_user.id).all()}
+    if not set(pids).issubset(owned):
+        return jsonify({"error":"One or more items are invalid"}), 400
+
+    purchase = Purchase(user_id=current_user.id, total_cost=sum(i["qty"]*i["unit_cost"] for i in items))
     db.session.add(purchase); db.session.flush()
     for it in items:
-        pi = PurchaseItem(purchase_id=purchase.id, product_id=it["product_id"],
-                          qty=it["qty"], unit_cost=it["unit_cost"])
-        db.session.add(pi)
-        mv = StockMovement(product_id=it["product_id"], qty=abs(it["qty"]),
-                           type="IN", source="purchase", unit_cost=it["unit_cost"])
-        db.session.add(mv)
+        db.session.add(PurchaseItem(purchase_id=purchase.id, product_id=it["product_id"], qty=it["qty"], unit_cost=it["unit_cost"]))
+        db.session.add(StockMovement(user_id=current_user.id, product_id=it["product_id"], qty=abs(it["qty"]), type="IN", source="purchase", unit_cost=it["unit_cost"]))
     db.session.commit()
     return jsonify({"purchase_id": purchase.id})
+
+@api_bp.get("/activity")
+@login_required
+def recent_activity():
+    limit = int(request.args.get("limit", 10))
+    q = (db.session.query(StockMovement, Product)
+         .join(Product, StockMovement.product_id == Product.id)
+         .filter(StockMovement.user_id == current_user.id, Product.user_id == current_user.id)
+         .order_by(StockMovement.timestamp.desc())
+         .limit(limit)
+         .all())
+    out = []
+    for mv, p in q:
+        out.append({"timestamp": mv.timestamp.isoformat(), "sku": p.sku, "name": p.name, "type": mv.type, "qty": mv.qty})
+    return jsonify(out)
+
 
 @api_bp.get("/forecast/<int:product_id>")
 @login_required
@@ -149,23 +216,4 @@ def sync_batch():
     db.session.commit()
     return jsonify({"created": created})
 
-@api_bp.get("/activity")
-@login_required
-def recent_activity():
-    limit = int(request.args.get("limit", 10))
-    # Join movements with product for name/sku
-    q = (db.session.query(StockMovement, Product)
-         .join(Product, StockMovement.product_id == Product.id)
-         .order_by(StockMovement.timestamp.desc())
-         .limit(limit)
-         .all())
-    out = []
-    for mv, p in q:
-        out.append({
-            "timestamp": mv.timestamp.isoformat(),
-            "sku": p.sku,
-            "name": p.name,
-            "type": mv.type,
-            "qty": mv.qty
-        })
-    return jsonify(out)
+

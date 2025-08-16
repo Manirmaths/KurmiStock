@@ -1,0 +1,18 @@
+Updating your site next time
+
+When you push new code to GitHub:
+
+cd ~/KurmiStock
+source .venv/bin/activate
+git pull
+pip install -r requirements.txt   #
+
+Reload and test
+
+Click the big Reload button at the top of the Web page.
+
+Visit https://manirmaths.pythonanywhere.com/
+
+First load will create app.db (SQLite) in your project folder.
+
+Go to /auth/register to create your first user.

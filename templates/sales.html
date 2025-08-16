@@ -1,13 +1,47 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="panel">
+
+<div class="panel" style="margin-bottom:1rem">
   <div class="panel-head">
-    <h2>Sales</h2>
-    <p class="subtitle">Build a cart and checkout. Stock decreases automatically.</p>
+    <div style="display:flex; gap:.5rem; align-items:center">
+      <h2 style="margin:0">Sales</h2>
+      <span class="pill" id="viewLabel">History</span>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btnHistory">📜 History</button>
+      <button class="btn primary" id="btnNew">➕ New sale</button>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY VIEW -->
+<section id="viewHistory" class="panel">
+  <div class="panel-head">
+    <h3>Recent sales</h3>
+    <div>
+      <select id="limitSel" class="btn tiny" style="padding:.35rem .5rem">
+        <option value="10">Last 10</option>
+        <option value="25">Last 25</option>
+        <option value="50" selected>Last 50</option>
+      </select>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="tbl" id="salesTbl">
+      <thead><tr><th>Date</th><th>Items</th><th>Total</th><th>Details</th></tr></thead>
+      <tbody id="salesBody"><tr><td colspan="4">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- POS VIEW (your existing POS, slightly renamed containers) -->
+<section id="viewPOS" class="panel" hidden>
+  <div class="panel-head">
+    <h3>New sale</h3>
+    <p class="subtitle">Search products, add to cart, and checkout.</p>
   </div>
 
   <div class="grid" style="grid-template-columns:2fr 1fr; gap:1rem">
-    <!-- Left: Product picker -->
     <div class="panel" style="margin:0">
       <div class="panel-head">
         <h3>Pick products</h3>
@@ -15,17 +49,12 @@
       </div>
       <div class="table-wrap" style="max-height: 50vh; overflow:auto">
         <table class="tbl" id="pickTable">
-          <thead>
-            <tr>
-              <th>SKU</th><th>Name</th><th>In Stock</th><th>Add</th>
-            </tr>
-          </thead>
+          <thead><tr><th>SKU</th><th>Name</th><th>In Stock</th><th>Add</th></tr></thead>
           <tbody id="pickBody"><tr><td colspan="4">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
 
-    <!-- Right: Cart -->
     <div class="panel" style="margin:0">
       <div class="panel-head">
         <h3>Cart</h3>
@@ -33,16 +62,10 @@
       </div>
       <div class="table-wrap">
         <table class="tbl">
-          <thead>
-            <tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Subtotal</th><th></th></tr>
-          </thead>
+          <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Subtotal</th><th></th></tr></thead>
           <tbody id="cartBody"><tr><td colspan="5">No items</td></tr></tbody>
           <tfoot>
-            <tr>
-              <th colspan="3" style="text-align:right">Total:</th>
-              <th id="totalCell">0</th>
-              <th></th>
-            </tr>
+            <tr><th colspan="3" style="text-align:right">Total:</th><th id="totalCell">0</th><th></th></tr>
           </tfoot>
         </table>
       </div>
@@ -54,24 +77,70 @@
 </section>
 
 <script>
-let PRODUCTS = [];     // from /api/products
-let STOCK = [];        // from /api/stock
-let CART = [];         // [{product_id, name, qty, unit_price}]
+/* Toggle between views based on ?view= */
+const params = new URLSearchParams(location.search);
+const defaultViewHistory = (params.get('view') || '').toLowerCase() !== 'new';
+const viewHistory = document.getElementById('viewHistory');
+const viewPOS = document.getElementById('viewPOS');
+const viewLabel = document.getElementById('viewLabel');
+function showHistory(){ viewHistory.hidden=false; viewPOS.hidden=true; viewLabel.textContent='History'; }
+function showPOS(){ viewHistory.hidden=true; viewPOS.hidden=false; viewLabel.textContent='New sale'; }
+(defaultViewHistory ? showHistory : showPOS)();
 
+document.getElementById('btnHistory').addEventListener('click', showHistory);
+document.getElementById('btnNew').addEventListener('click', showPOS);
+
+/* --- History loader --- */
+async function loadSales(){
+  const body = document.getElementById('salesBody');
+  const limit = document.getElementById('limitSel').value;
+
+  try {
+    const res = await fetch(`/api/sales_list?limit=${encodeURIComponent(limit)}`);
+    const ct = res.headers.get('content-type') || '';
+    if (!res.ok) {
+      body.innerHTML = `<tr><td colspan="4">Failed to load (HTTP ${res.status}).</td></tr>`;
+      return;
+    }
+    if (!ct.includes('application/json')) {
+      body.innerHTML = `<tr><td colspan="4">You were redirected. Please log in again.</td></tr>`;
+      return;
+    }
+
+    const data = await res.json();
+    if (!data.length) {
+      body.innerHTML = '<tr><td colspan="4">No sales yet.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = data.map(s=>{
+      const dt = new Date(s.timestamp).toLocaleString();
+      const itemsCount = (s.items || []).reduce((a,b)=>a + (b.qty||0), 0);
+      const total = Number(s.total_amount||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+      const detail = (s.items || []).map(i=>`${i.name} × ${i.qty} @ ${i.unit_price}`).join('<br>');
+      return `<tr>
+        <td>${dt}</td>
+        <td>${itemsCount}</td>
+        <td>${total}</td>
+        <td>${detail}</td>
+      </tr>`;
+    }).join('');
+
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="4">Error loading sales: ${e?.message || 'network error'}</td></tr>`;
+  }
+}
+document.getElementById('limitSel').addEventListener('change', loadSales);
+loadSales();
+
+/* --- POS logic (same as before, kept concise) --- */
+let PRODUCTS=[], STOCK=[], CART=[];
 function fmt(n){ return Number(n||0).toLocaleString(undefined,{minimumFractionDigits:0, maximumFractionDigits:2}); }
-
-async function loadData(){
+async function loadPOSData(){
   const [pRes, sRes] = await Promise.all([fetch('/api/products'), fetch('/api/stock')]);
-  PRODUCTS = await pRes.json();
-  STOCK = await sRes.json();
-  renderPicker();
-  renderCart();
+  PRODUCTS = await pRes.json(); STOCK = await sRes.json(); renderPicker(); renderCart();
 }
-function getStockMap(){
-  const m = new Map();
-  for(const s of STOCK) m.set(s.product_id, s.stock);
-  return m;
-}
+function getStockMap(){ const m=new Map(); for(const s of STOCK) m.set(s.product_id, s.stock); return m; }
 function renderPicker(filter=''){
   const body = document.getElementById('pickBody');
   const stockMap = getStockMap();
@@ -79,13 +148,11 @@ function renderPicker(filter=''){
     .filter(p => (p.name+p.sku).toLowerCase().includes(filter.toLowerCase()))
     .map(p=>{
       const inStock = stockMap.get(p.id) ?? 0;
-      return `
-        <tr>
-          <td>${p.sku}</td>
-          <td>${p.name}</td>
-          <td><span class="pill ${inStock<=0?'danger':(inStock<=(p.reorder_point||0)?'warn':'')}">${inStock}</span></td>
-          <td><button class="btn tiny" onclick="addToCart(${p.id})">Add</button></td>
-        </tr>`;
+      return `<tr>
+        <td>${p.sku}</td><td>${p.name}</td>
+        <td><span class="pill ${inStock<=0?'danger':(inStock<=(p.reorder_point||0)?'warn':'')}">${inStock}</span></td>
+        <td><button class="btn tiny" onclick="addToCart(${p.id})">Add</button></td>
+      </tr>`;
     });
   body.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="4">No matches</td></tr>';
 }
@@ -99,52 +166,36 @@ function renderCart(){
       <td><input type="number" min="0" step="0.01" value="${it.unit_price}" style="width:90px" onchange="setPrice(${idx}, this.value)"></td>
       <td>${fmt(it.qty * it.unit_price)}</td>
       <td><button class="btn tiny" onclick="removeItem(${idx})">✕</button></td>
-    </tr>
-  `).join('');
+    </tr>`).join('');
   const total = CART.reduce((a,b)=>a + (Number(b.qty)||0)*(Number(b.unit_price)||0), 0);
   document.getElementById('totalCell').textContent = fmt(total);
 }
 window.addToCart = function(product_id){
-  const p = PRODUCTS.find(x=>x.id===product_id);
-  if(!p) return;
-  const existing = CART.find(x=>x.product_id===product_id);
+  const p = PRODUCTS.find(x=>x.id===product_id); if(!p) return;
+  const ex = CART.find(x=>x.product_id===product_id);
   const defaultPrice = Number(p.unit_price || 0);
-  if(existing){ existing.qty += 1; }
-  else{ CART.push({product_id, name:p.name, qty:1, unit_price: defaultPrice}); }
+  if(ex){ ex.qty += 1; } else { CART.push({product_id, name:p.name, qty:1, unit_price: defaultPrice}); }
   renderCart();
-};
+}
+window.setQty = (i,v)=>{ CART[i].qty = Math.max(1, parseInt(v||'1',10)); renderCart(); }
+window.setPrice = (i,v)=>{ CART[i].unit_price = Math.max(0, Number(v||'0')); renderCart(); }
+window.removeItem = (i)=>{ CART.splice(i,1); renderCart(); }
+document.getElementById('clearCart').addEventListener('click', ()=>{ CART=[]; renderCart(); });
+document.getElementById('search').addEventListener('input', (e)=>renderPicker(e.target.value));
 
 document.getElementById('checkoutBtn').addEventListener('click', async ()=>{
   if(!CART.length) return showToast('Cart is empty', 'Add items first', 'err');
-
-  // Validate stock
   const stock = getStockMap();
   for(const it of CART){
     const cur = stock.get(it.product_id) ?? 0;
-    if(it.qty > cur){
-      return showToast('Insufficient stock', `${it.name}: have ${cur}, need ${it.qty}`, 'err');
-    }
+    if(it.qty > cur) return showToast('Insufficient stock', `${it.name}: have ${cur}, need ${it.qty}`, 'err');
   }
-
-  const payload = { items: CART.map(it=>({
-    product_id: it.product_id,
-    qty: Number(it.qty||0),
-    unit_price: Number(it.unit_price||0)
-  })) };
-
+  const payload = { items: CART.map(it=>({product_id: it.product_id, qty: Number(it.qty||0), unit_price: Number(it.unit_price||0)})) };
   let res;
-  try {
-    res = await fetch('/api/sales', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload),
-      redirect: 'follow'
-    });
-  } catch (e) {
-    return showToast('Network error', e.message || 'Could not reach server', 'err');
-  }
+  try{
+    res = await fetch('/api/sales',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  }catch(e){ return showToast('Network error', e.message || 'Could not reach server', 'err'); }
 
-  // Handle being redirected to login (not authenticated)
   const ct = res.headers.get('content-type') || '';
   if (res.redirected || (!ct.includes('application/json') && res.status === 200)) {
     return showToast('Please log in', 'Your session expired. Login and try again.', 'err');
@@ -152,19 +203,13 @@ document.getElementById('checkoutBtn').addEventListener('click', async ()=>{
 
   if(res.ok){
     showToast('Sale recorded', 'Stock updated');
-    CART = [];
-    renderCart();
-    // Refresh stock & picker
-    const sRes = await fetch('/api/stock');
-    STOCK = await sRes.json();
-    renderPicker(document.getElementById('search').value || '');
-  } else {
+    CART=[]; renderCart(); await loadPOSData(); loadSales(); // refresh history too
+  }else{
     const t = await res.text();
     showToast('Failed to record sale', t || `HTTP ${res.status}`, 'err');
   }
 });
 
-
-loadData();
+loadPOSData();
 </script>
 {% endblock %}

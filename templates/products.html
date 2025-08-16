@@ -8,20 +8,21 @@
     </div>
   </div>
 
-<div class="table-wrap">
-  <table class="tbl" id="prodTable">
-    <thead>
-      <tr>
-        <th>SKU</th>
-        <th>Name</th>
-        <th>Units</th>
-        <th>Price per unit</th>
-      </tr>
-    </thead>
-    <tbody id="prodBody"><tr><td colspan="4">Loading…</td></tr></tbody>
-  </table>
-</div>
-
+  <div class="table-wrap">
+    <table class="tbl" id="prodTable">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Name</th>
+          <th>Units</th>
+          <th>Price</th>
+          <th>Expiry</th>
+          <th>Added on</th>
+        </tr>
+      </thead>
+      <tbody id="prodBody"><tr><td colspan="6">Loading…</td></tr></tbody>
+    </table>
+  </div>
 </section>
 
 <!-- Modal -->
@@ -31,19 +32,35 @@
       <h3>Add Product</h3>
       <button class="btn tiny ghost" id="closeAdd">✕</button>
     </div>
-    <form id="addForm" class="grid" style="grid-template-columns:1fr 1fr; gap:.8rem">
-  <input name="sku" placeholder="SKU *" required>
-  <input name="name" placeholder="Name *" required>
-  <input name="barcode" placeholder="Barcode (optional)">
-  <input name="reorder_point" type="number" min="0" value="0" placeholder="Reorder point">
-  <input name="unit_price" type="number" step="0.01" min="0" value="0" placeholder="Unit price">
-  <input name="opening_stock" type="number" min="0" value="0" placeholder="Opening stock">
-  <div style="grid-column:1 / -1; display:flex; gap:.6rem; justify-content:flex-end">
-    <button type="button" class="btn" id="cancelAdd">Cancel</button>
-    <button type="submit" class="btn primary">Save</button>
-  </div>
-</form>
 
+    <form id="addForm" class="grid" style="grid-template-columns:1fr 1fr; gap:.8rem">
+      <label>Product Name
+        <input name="name" placeholder="e.g., Indomie Chicken 70g" required>
+      </label>
+      <label>SKU (unique)
+        <input name="sku" placeholder="e.g., IND-70G-CH" required>
+      </label>
+
+      <label>Quantity (opening stock)
+        <input name="opening_stock" type="number" min="0" value="0" placeholder="e.g., 24">
+        <small class="hint">Automatically records <em>date added</em> now.</small>
+      </label>
+      <label>Price per unit
+        <input name="unit_price" type="number" min="0" step="0.01" value="0" placeholder="e.g., 120.00">
+      </label>
+
+      <label>Expiry date (optional)
+        <input name="expiry_date" type="date">
+      </label>
+      <label>Reorder point (optional)
+        <input name="reorder_point" type="number" min="0" value="0" placeholder="e.g., 10">
+      </label>
+
+      <div style="grid-column:1 / -1; display:flex; gap:.6rem; justify-content:flex-end; margin-top:.4rem">
+        <button type="button" class="btn" id="cancelAdd">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -56,34 +73,34 @@ const addForm = document.getElementById('addForm');
 const prodBody = document.getElementById('prodBody');
 
 function toggleModal(show){ modal.hidden = !show; }
-
 openAdd.addEventListener('click', ()=>toggleModal(true));
 closeAdd.addEventListener('click', ()=>toggleModal(false));
 cancelAdd.addEventListener('click', ()=>toggleModal(false));
 
+function fmtMoney(n){ return Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtDate(s){ try{ return new Date(s).toLocaleDateString(); }catch(_){ return '-'; } }
+
 async function loadProducts(){
-  const [prodRes, stockRes] = await Promise.all([
-    fetch('/api/products'),
-    fetch('/api/stock')
-  ]);
+  const [prodRes, stockRes] = await Promise.all([fetch('/api/products'), fetch('/api/stock')]);
   const products = await prodRes.json();
   const stock = await stockRes.json();
   const stockMap = new Map(stock.map(s => [s.product_id, s.stock || 0]));
 
   if(!products.length){
-    prodBody.innerHTML = '<tr><td colspan="4">No products yet. Click “Add Product”.</td></tr>';
+    prodBody.innerHTML = '<tr><td colspan="6">No products yet. Click “Add Product”.</td></tr>';
     return;
   }
 
   prodBody.innerHTML = products.map(p=>{
     const units = stockMap.get(p.id) ?? 0;
-    const price = (Number(p.unit_price||0)).toFixed(2);
     return `
       <tr>
         <td>${p.sku}</td>
         <td>${p.name}</td>
         <td>${units}</td>
-        <td>${price}</td>
+        <td>${fmtMoney(p.unit_price)}</td>
+        <td>${p.expiry_date ? fmtDate(p.expiry_date) : '-'}</td>
+        <td>${p.created_at ? fmtDate(p.created_at) : '-'}</td>
       </tr>
     `;
   }).join('');
@@ -91,21 +108,21 @@ async function loadProducts(){
 
 addForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
-  const form = new FormData(addForm);
+  const f = new FormData(addForm);
   const payload = {
-  sku: form.get('sku').trim(),
-  name: form.get('name').trim(),
-  barcode: form.get('barcode').trim() || null,
-  reorder_point: parseInt(form.get('reorder_point')||'0',10),
-  unit_price: Number(form.get('unit_price')||'0'),
-  opening_stock: parseInt(form.get('opening_stock')||'0',10)
-};
+    sku: f.get('sku').trim(),
+    name: f.get('name').trim(),
+    opening_stock: parseInt(f.get('opening_stock')||'0',10),
+    unit_price: Number(f.get('unit_price')||'0'),
+    expiry_date: f.get('expiry_date') || null,
+    reorder_point: parseInt(f.get('reorder_point')||'0',10)
+  };
 
   const res = await fetch('/api/products', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(payload)
   });
+
   if(res.ok){
     showToast('Product added', `${payload.name} (${payload.sku})`);
     addForm.reset();

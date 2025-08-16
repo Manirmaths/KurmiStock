@@ -1,12 +1,11 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from config import Config
 from extensions import db, login_manager
 from models import *
 from routes_auth import auth_bp
 from routes_api import api_bp
-from flask_login import login_required
+from flask_login import login_required, current_user
 
-from flask_login import login_required
 
 def create_app():
     app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -45,6 +44,28 @@ def create_app():
     def purchases():
         return render_template("purchases.html")
 
+  
+    @app.after_request
+    def never_cache_private(r):
+        # Never cache APIs
+        if request.path.startswith('/api/'):
+            r.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            r.headers['Pragma'] = 'no-cache'
+            r.headers['Expires'] = '0'
+            r.headers['Vary'] = 'Cookie'
+            return r
+
+        # For HTML that depends on login state (/, /dashboard, /products, /sales, /purchases)
+        if request.headers.get('Accept','').find('text/html') != -1 and request.path in (
+            '/', '/dashboard', '/products', '/sales', '/purchases'
+        ):
+            r.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            r.headers['Pragma'] = 'no-cache'
+            r.headers['Expires'] = '0'
+            r.headers['Vary'] = 'Cookie'
+        return r
+
+    
     return app
 
 
