@@ -7,13 +7,13 @@
   <meta name="theme-color" content="#0f172a"/>
   <link rel="icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-  <title>StockWise AI</title>
+  <title>KurmiStock AI</title>
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
       <span class="logo">📦</span>
-      <a class="brand-name" href="/">StockWise <strong>AI</strong></a>
+      <a class="brand-name" href="/">KurmiStock <strong>AI</strong></a>
     </div>
 
     {% if current_user.is_authenticated %}
@@ -45,7 +45,7 @@
   </main>
 
   <footer class="foot">
-    <small>© {{ 2025 }} StockWise AI • Offline-first • Made for African SMEs</small>
+    <small>© {{ 2025 }} KurmiStock AI • Offline-first • Made for African SMEs</small>
   </footer>
   <div id="toasts" class="toasts"></div>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
