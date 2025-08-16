@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<form method="post" action="{{ '/auth/register' if register else '/auth/login' }}">
+  <input name="email" type="email" placeholder="Email" required/>
+  <input name="password" type="password" placeholder="Password" required/>
+  <button type="submit">{{ 'Create account' if register else 'Sign in' }}</button>
+</form>
+<a href="{{ '/auth/register' if not register else '/auth/login' }}">
+  {{ 'Create an account' if not register else 'Have an account? Sign in' }}
+</a>
+{% endblock %}

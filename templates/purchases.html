@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>Purchases</h2>
+    <p class="subtitle">Receive inventory to increase stock and update costs.</p>
+  </div>
+
+  <div class="grid" style="grid-template-columns:2fr 1fr; gap:1rem">
+    <div class="panel" style="margin:0">
+      <div class="panel-head">
+        <h3>Pick products</h3>
+        <input id="pSearch" placeholder="Search by name or SKU" style="max-width:260px; padding:.5rem .6rem; border-radius:.6rem; border:1px solid var(--border); background:#0b1220; color:var(--text)"/>
+      </div>
+      <div class="table-wrap" style="max-height: 50vh; overflow:auto">
+        <table class="tbl" id="pPickTable">
+          <thead><tr><th>SKU</th><th>Name</th><th>In Stock</th><th>Add</th></tr></thead>
+          <tbody id="pPickBody"><tr><td colspan="4">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel" style="margin:0">
+      <div class="panel-head">
+        <h3>Receiving</h3>
+        <button class="btn tiny" id="pClear">Clear</button>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl">
+          <thead><tr><th>Item</th><th>Qty</th><th>Unit Cost</th><th>Subtotal</th><th></th></tr></thead>
+          <tbody id="pCartBody"><tr><td colspan="5">No items</td></tr></tbody>
+          <tfoot>
+            <tr><th colspan="3" style="text-align:right">Total:</th><th id="pTotal">0</th><th></th></tr>
+          </tfoot>
+        </table>
+      </div>
+      <div style="display:flex; justify-content:flex-end; margin-top:.8rem">
+        <button class="btn primary" id="pReceiveBtn">Receive</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+let P_PRODUCTS=[], P_STOCK=[], P_CART=[];
+
+function fmt(n){ return Number(n||0).toLocaleString(undefined,{minimumFractionDigits:0, maximumFractionDigits:2}); }
+
+async function loadP(){
+  const [pRes, sRes] = await Promise.all([fetch('/api/products'), fetch('/api/stock')]);
+  P_PRODUCTS = await pRes.json(); P_STOCK = await sRes.json();
+  renderPPicker(); renderPCart();
+}
+function pStockMap(){ const m=new Map(); for(const s of P_STOCK) m.set(s.product_id, s.stock); return m; }
+
+function renderPPicker(filter=''){
+  const body = document.getElementById('pPickBody');
+  const sm = pStockMap();
+  const rows = P_PRODUCTS
+    .filter(p => (p.name+p.sku).toLowerCase().includes(filter.toLowerCase()))
+    .map(p=>{
+      const st = sm.get(p.id) ?? 0;
+      return `<tr>
+        <td>${p.sku}</td><td>${p.name}</td>
+        <td><span class="pill">${st}</span></td>
+        <td><button class="btn tiny" onclick="addP(${p.id})">Add</button></td>
+      </tr>`;
+    });
+  body.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="4">No matches</td></tr>';
+}
+
+function renderPCart(){
+  const body = document.getElementById('pCartBody');
+  if(!P_CART.length){ body.innerHTML = '<tr><td colspan="5">No items</td></tr>'; document.getElementById('pTotal').textContent='0'; return; }
+  body.innerHTML = P_CART.map((it, idx)=>`
+    <tr>
+      <td>${it.name}</td>
+      <td><input type="number" min="1" value="${it.qty}" style="width:70px" onchange="pSetQty(${idx}, this.value)"></td>
+      <td><input type="number" min="0" step="0.01" value="${it.unit_cost}" style="width:90px" onchange="pSetCost(${idx}, this.value)"></td>
+      <td>${fmt(it.qty * it.unit_cost)}</td>
+      <td><button class="btn tiny" onclick="pRemove(${idx})">✕</button></td>
+    </tr>
+  `).join('');
+  const total = P_CART.reduce((a,b)=>a + (Number(b.qty)||0)*(Number(b.unit_cost)||0), 0);
+  document.getElementById('pTotal').textContent = fmt(total);
+}
+
+window.addP = function(id){
+  const p = P_PRODUCTS.find(x=>x.id===id); if(!p) return;
+  const ex = P_CART.find(x=>x.product_id===id);
+  if(ex){ ex.qty += 1; } else { P_CART.push({product_id:id, name:p.name, qty:1, unit_cost:0}); }
+  renderPCart();
+}
+window.pSetQty = (i,v)=>{ P_CART[i].qty = Math.max(1, parseInt(v||'1',10)); renderPCart(); }
+window.pSetCost = (i,v)=>{ P_CART[i].unit_cost = Math.max(0, Number(v||'0')); renderPCart(); }
+window.pRemove = (i)=>{ P_CART.splice(i,1); renderPCart(); }
+
+document.getElementById('pClear').addEventListener('click', ()=>{ P_CART=[]; renderPCart(); });
+document.getElementById('pSearch').addEventListener('input', e=>renderPPicker(e.target.value));
+
+document.getElementById('pReceiveBtn').addEventListener('click', async ()=>{
+  if(!P_CART.length) return showToast('No items', 'Add products to receive', 'err');
+  const payload = { items: P_CART.map(it=>({
+    product_id: it.product_id,
+    qty: Number(it.qty||0),
+    unit_cost: Number(it.unit_cost||0)
+  })) };
+
+  let res;
+  try{
+    res = await fetch('/api/purchases',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  }catch(e){
+    return showToast('Network error', e.message || 'Could not reach server', 'err');
+  }
+
+  const ct = res.headers.get('content-type') || '';
+  if (res.redirected || (!ct.includes('application/json') && res.status === 200)) {
+    return showToast('Please log in', 'Your session expired. Login and try again.', 'err');
+  }
+
+  if(res.ok){
+    showToast('Stock received', 'Inventory updated');
+    P_CART=[]; renderPCart();
+    // Refresh stock so picker updates
+    const sRes = await fetch('/api/stock');
+    P_STOCK = await sRes.json();
+    renderPPicker(document.getElementById('pSearch').value || '');
+  } else {
+    const t = await res.text();
+    showToast('Failed to receive', t || `HTTP ${res.status}`, 'err');
+  }
+});
+
+loadP();
+</script>
+{% endblock %}

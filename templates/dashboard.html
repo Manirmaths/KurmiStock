@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if not current_user.is_authenticated %}
+  <section class="hero">
+    <h1 class="title">Welcome to StockWise AI 🚀</h1>
+    <p class="subtitle">Please log in or create an account to manage your inventory.</p>
+    <div class="actions">
+      <a class="btn primary" href="/auth/register">✨ Sign up</a>
+      <a class="btn" href="/auth/login">🔐 Login</a>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Why sign in?</h2>
+    <ul>
+      <li>Track products and stock levels</li>
+      <li>Get low-stock alerts and reorder suggestions</li>
+      <li>Record sales and purchases (offline-first)</li>
+    </ul>
+  </section>
+{% else %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Recent activity</h2>
+  </div>
+  <div class="table-wrap">
+    <table class="tbl" id="activityTbl">
+      <thead><tr><th>When</th><th>SKU</th><th>Name</th><th>Type</th><th>Qty</th></tr></thead>
+      <tbody id="activityBody"><tr><td colspan="5">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+async function loadActivity(){
+  // reuse /api/stock? Not enough. We'll fetch last movements via a tiny endpoint.
+  const res = await fetch('/api/activity?limit=10');
+  if(!res.ok){ document.getElementById('activityBody').innerHTML = '<tr><td colspan="5">Failed to load</td></tr>'; return; }
+  const rows = await res.json();
+  document.getElementById('activityBody').innerHTML = rows.map(r=>`
+    <tr>
+      <td>${new Date(r.timestamp).toLocaleString()}</td>
+      <td>${r.sku}</td>
+      <td>${r.name}</td>
+      <td>${r.type}</td>
+      <td>${r.qty}</td>
+    </tr>
+  `).join('');
+}
+loadActivity();
+</script>
+
+  <!-- Existing authenticated dashboard UI -->
+  <section class="hero">
+    <div>
+      <h1 class="title">Welcome back 👋</h1>
+      <p class="subtitle">Track stock, avoid stockouts, and reorder with confidence.</p>
+      <div class="actions">
+        <a class="btn primary" href="/products">➕ Add Product</a>
+        <a class="btn" href="/sales">🧾 Record Sale</a>
+        <a class="btn" href="/purchases">📥 Record Purchase</a>
+        <button id="syncBtn" class="btn ghost">🔄 Sync now</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid cards3" id="stats">
+    <article class="card">
+      <div class="card-icon">📚</div>
+      <div class="card-body">
+        <h3 id="statProducts">—</h3>
+        <p>Total Products</p>
+      </div>
+    </article>
+    <article class="card">
+      <div class="card-icon">📦</div>
+      <div class="card-body">
+        <h3 id="statSkusLow">—</h3>
+        <p>Low / Reorder Needed</p>
+      </div>
+    </article>
+    <article class="card">
+      <div class="card-icon">📉</div>
+      <div class="card-body">
+        <h3 id="statOos">—</h3>
+        <p>Out of Stock</p>
+      </div>
+    </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Low stock alerts</h2>
+      <a class="btn tiny" href="/products">Manage products →</a>
+    </div>
+    <div class="table-wrap">
+      <table class="tbl" id="lowStockTable">
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Name</th>
+            <th>In Stock</th>
+            <th>Reorder Point</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="lowStockBody">
+          <tr><td colspan="5">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="grid shortcuts">
+    <a class="shortcut" href="/products">
+      <span>🧮</span>
+      <div>
+        <h4>Products</h4>
+        <p>Add, edit, and organize your SKUs.</p>
+      </div>
+    </a>
+    <a class="shortcut" href="/sales">
+      <span>🧾</span>
+      <div>
+        <h4>Sales</h4>
+        <p>Capture sales and reduce stock automatically.</p>
+      </div>
+    </a>
+    <a class="shortcut" href="/purchases">
+      <span>📥</span>
+      <div>
+        <h4>Purchases</h4>
+        <p>Receive stock and update costs.</p>
+      </div>
+    </a>
+  </section>
+
+  <script>
+  async function loadDashboard(){
+    const [stockRes, prodRes] = await Promise.all([
+      fetch('/api/stock'),
+      fetch('/api/products')
+    ]);
+    const stock = await stockRes.json();
+    const products = await prodRes.json();
+
+    document.getElementById('statProducts').textContent = products.length;
+    const low = stock.filter(s => s.stock <= s.reorder_point && s.reorder_point > 0);
+    const oos = stock.filter(s => s.stock <= 0);
+    document.getElementById('statSkusLow').textContent = low.length;
+    document.getElementById('statOos').textContent = oos.length;
+
+    const tbody = document.getElementById('lowStockBody');
+    if (!low.length) {
+      tbody.innerHTML = '<tr><td colspan="5">🎉 All good! No items below reorder point.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = low.map(r => `
+      <tr>
+        <td>${r.sku}</td>
+        <td>${r.name}</td>
+        <td><span class="pill ${r.stock<=0?'danger':'warn'}">${r.stock}</span></td>
+        <td>${r.reorder_point}</td>
+        <td><a class="btn tiny" href="/purchases">Reorder</a></td>
+      </tr>
+    `).join('');
+  }
+  loadDashboard();
+  </script>
+
+{% endif %}
+{% endblock %}

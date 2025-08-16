@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>Sales</h2>
+    <p class="subtitle">Build a cart and checkout. Stock decreases automatically.</p>
+  </div>
+
+  <div class="grid" style="grid-template-columns:2fr 1fr; gap:1rem">
+    <!-- Left: Product picker -->
+    <div class="panel" style="margin:0">
+      <div class="panel-head">
+        <h3>Pick products</h3>
+        <input id="search" placeholder="Search by name or SKU" style="max-width:260px; padding:.5rem .6rem; border-radius:.6rem; border:1px solid var(--border); background:#0b1220; color:var(--text)"/>
+      </div>
+      <div class="table-wrap" style="max-height: 50vh; overflow:auto">
+        <table class="tbl" id="pickTable">
+          <thead>
+            <tr>
+              <th>SKU</th><th>Name</th><th>In Stock</th><th>Add</th>
+            </tr>
+          </thead>
+          <tbody id="pickBody"><tr><td colspan="4">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Right: Cart -->
+    <div class="panel" style="margin:0">
+      <div class="panel-head">
+        <h3>Cart</h3>
+        <button class="btn tiny" id="clearCart">Clear</button>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl">
+          <thead>
+            <tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Subtotal</th><th></th></tr>
+          </thead>
+          <tbody id="cartBody"><tr><td colspan="5">No items</td></tr></tbody>
+          <tfoot>
+            <tr>
+              <th colspan="3" style="text-align:right">Total:</th>
+              <th id="totalCell">0</th>
+              <th></th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div style="display:flex; justify-content:flex-end; margin-top:.8rem">
+        <button class="btn primary" id="checkoutBtn">Checkout</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+let PRODUCTS = [];     // from /api/products
+let STOCK = [];        // from /api/stock
+let CART = [];         // [{product_id, name, qty, unit_price}]
+
+function fmt(n){ return Number(n||0).toLocaleString(undefined,{minimumFractionDigits:0, maximumFractionDigits:2}); }
+
+async function loadData(){
+  const [pRes, sRes] = await Promise.all([fetch('/api/products'), fetch('/api/stock')]);
+  PRODUCTS = await pRes.json();
+  STOCK = await sRes.json();
+  renderPicker();
+  renderCart();
+}
+function getStockMap(){
+  const m = new Map();
+  for(const s of STOCK) m.set(s.product_id, s.stock);
+  return m;
+}
+function renderPicker(filter=''){
+  const body = document.getElementById('pickBody');
+  const stockMap = getStockMap();
+  const rows = PRODUCTS
+    .filter(p => (p.name+p.sku).toLowerCase().includes(filter.toLowerCase()))
+    .map(p=>{
+      const inStock = stockMap.get(p.id) ?? 0;
+      return `
+        <tr>
+          <td>${p.sku}</td>
+          <td>${p.name}</td>
+          <td><span class="pill ${inStock<=0?'danger':(inStock<=(p.reorder_point||0)?'warn':'')}">${inStock}</span></td>
+          <td><button class="btn tiny" onclick="addToCart(${p.id})">Add</button></td>
+        </tr>`;
+    });
+  body.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="4">No matches</td></tr>';
+}
+function renderCart(){
+  const body = document.getElementById('cartBody');
+  if(!CART.length){ body.innerHTML = '<tr><td colspan="5">No items</td></tr>'; document.getElementById('totalCell').textContent='0'; return; }
+  body.innerHTML = CART.map((it, idx)=>`
+    <tr>
+      <td>${it.name}</td>
+      <td><input type="number" min="1" value="${it.qty}" style="width:70px" onchange="setQty(${idx}, this.value)"></td>
+      <td><input type="number" min="0" step="0.01" value="${it.unit_price}" style="width:90px" onchange="setPrice(${idx}, this.value)"></td>
+      <td>${fmt(it.qty * it.unit_price)}</td>
+      <td><button class="btn tiny" onclick="removeItem(${idx})">✕</button></td>
+    </tr>
+  `).join('');
+  const total = CART.reduce((a,b)=>a + (Number(b.qty)||0)*(Number(b.unit_price)||0), 0);
+  document.getElementById('totalCell').textContent = fmt(total);
+}
+window.addToCart = function(product_id){
+  const p = PRODUCTS.find(x=>x.id===product_id);
+  if(!p) return;
+  const existing = CART.find(x=>x.product_id===product_id);
+  const defaultPrice = Number(p.unit_price || 0);
+  if(existing){ existing.qty += 1; }
+  else{ CART.push({product_id, name:p.name, qty:1, unit_price: defaultPrice}); }
+  renderCart();
+};
+
+document.getElementById('checkoutBtn').addEventListener('click', async ()=>{
+  if(!CART.length) return showToast('Cart is empty', 'Add items first', 'err');
+
+  // Validate stock
+  const stock = getStockMap();
+  for(const it of CART){
+    const cur = stock.get(it.product_id) ?? 0;
+    if(it.qty > cur){
+      return showToast('Insufficient stock', `${it.name}: have ${cur}, need ${it.qty}`, 'err');
+    }
+  }
+
+  const payload = { items: CART.map(it=>({
+    product_id: it.product_id,
+    qty: Number(it.qty||0),
+    unit_price: Number(it.unit_price||0)
+  })) };
+
+  let res;
+  try {
+    res = await fetch('/api/sales', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+  } catch (e) {
+    return showToast('Network error', e.message || 'Could not reach server', 'err');
+  }
+
+  // Handle being redirected to login (not authenticated)
+  const ct = res.headers.get('content-type') || '';
+  if (res.redirected || (!ct.includes('application/json') && res.status === 200)) {
+    return showToast('Please log in', 'Your session expired. Login and try again.', 'err');
+  }
+
+  if(res.ok){
+    showToast('Sale recorded', 'Stock updated');
+    CART = [];
+    renderCart();
+    // Refresh stock & picker
+    const sRes = await fetch('/api/stock');
+    STOCK = await sRes.json();
+    renderPicker(document.getElementById('search').value || '');
+  } else {
+    const t = await res.text();
+    showToast('Failed to record sale', t || `HTTP ${res.status}`, 'err');
+  }
+});
+
+
+loadData();
+</script>
+{% endblock %}
