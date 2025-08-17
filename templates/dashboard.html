@@ -21,6 +21,7 @@
   </section>
 {% else %}
 
+<!-- Recent Activity -->
 <section class="panel">
   <div class="panel-head">
     <h2>Recent activity</h2>
@@ -35,9 +36,11 @@
 
 <script>
 async function loadActivity(){
-  // reuse /api/stock? Not enough. We'll fetch last movements via a tiny endpoint.
   const res = await fetch('/api/activity?limit=10');
-  if(!res.ok){ document.getElementById('activityBody').innerHTML = '<tr><td colspan="5">Failed to load</td></tr>'; return; }
+  if(!res.ok){
+    document.getElementById('activityBody').innerHTML = '<tr><td colspan="5">Failed to load</td></tr>';
+    return;
+  }
   const rows = await res.json();
   document.getElementById('activityBody').innerHTML = rows.map(r=>`
     <tr>
@@ -52,123 +55,338 @@ async function loadActivity(){
 loadActivity();
 </script>
 
-  <!-- Existing authenticated dashboard UI -->
-  <section class="hero">
+<!-- Hero / Actions -->
+<section class="hero">
+  <div>
+    <h1 class="title dash">Welcome back 👋</h1>
+    <p class="subtitle">Track stock, avoid stockouts, and reorder with confidence.</p>
+    <div class="actions">
+      <!-- CHANGE: turn New sale into a button that opens modal -->
+      <button type="button" class="btn primary" id="openSaleBtn">➕ New sale</button>
+      <a class="btn" href="/products">📦 Products</a>
+      <a class="btn" href="/sales?view=history">📜 Sales</a>
+      <a class="btn" href="/purchases">📥 Record Purchase</a>
+      <button id="syncBtn" class="btn ghost">🔄 Sync now</button>
+    </div>
+  </div>
+</section>
+
+<!-- KPI cards -->
+<section class="grid cards3" id="stats">
+  <article class="card">
+    <div class="card-icon">📦</div>
+    <div class="card-body">
+      <h3 id="statProducts">—</h3>
+      <p>Total Products</p>
+    </div>
+  </article>
+  <article class="card">
+    <div class="card-icon">📦</div>
+    <div class="card-body">
+      <h3 id="statSkusLow">—</h3>
+      <p>Low / Reorder Needed</p>
+    </div>
+  </article>
+  <article class="card">
+    <div class="card-icon">📉</div>
+    <div class="card-body">
+      <h3 id="statOos">—</h3>
+      <p>Out of Stock</p>
+    </div>
+  </article>
+</section>
+
+<!-- Low stock table -->
+<section class="panel">
+  <div class="panel-head">
+    <h2>Low stock alerts</h2>
+    <a class="btn tiny" href="/products">Manage products →</a>
+  </div>
+  <div class="table-wrap">
+    <table class="tbl" id="lowStockTable">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Name</th>
+          <th>In Stock</th>
+          <th>Reorder Point</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="lowStockBody">
+        <tr><td colspan="5">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Shortcuts -->
+<section class="grid shortcuts">
+  <a class="shortcut" href="/products">
+    <span>🧮</span>
     <div>
-      <h1 class="title">Welcome back 👋</h1>
-      <p class="subtitle">Track stock, avoid stockouts, and reorder with confidence.</p>
-      <div class="actions">
-        <a class="btn primary" href="/products">➕ Add Product</a>
-        <a class="btn" href="/sales?view=history">🧾 Sales</a>
-        <a class="btn" href="/purchases">📥 Record Purchase</a>
-        <button id="syncBtn" class="btn ghost">🔄 Sync now</button>
+      <h4>Products</h4>
+      <p>Add, edit, and organize your SKUs.</p>
+    </div>
+  </a>
+  <a class="shortcut" href="/sales?view=history">
+    <span>🧾</span>
+    <div>
+      <h4>Sales</h4>
+      <p>Review your recent sales.</p>
+    </div>
+  </a>
+  <a class="shortcut" href="/purchases">
+    <span>📥</span>
+    <div>
+      <h4>Purchases</h4>
+      <p>Receive stock and update costs.</p>
+    </div>
+  </a>
+</section>
+
+<script>
+async function loadDashboard(){
+  const [stockRes, prodRes] = await Promise.all([
+    fetch('/api/stock'),
+    fetch('/api/products')
+  ]);
+  const stock = await stockRes.json();
+  const products = await prodRes.json();
+
+  document.getElementById('statProducts').textContent = products.length;
+  const low = stock.filter(s => s.stock <= s.reorder_point && s.reorder_point > 0);
+  const oos = stock.filter(s => s.stock <= 0);
+  document.getElementById('statSkusLow').textContent = low.length;
+  document.getElementById('statOos').textContent = oos.length;
+
+  const tbody = document.getElementById('lowStockBody');
+  if (!low.length) {
+    tbody.innerHTML = '<tr><td colspan="5">🎉 All good! No items below reorder point.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = low.map(r => `
+    <tr>
+      <td>${r.sku}</td>
+      <td>${r.name}</td>
+      <td><span class="pill ${r.stock<=0?'danger':'warn'}">${r.stock}</span></td>
+      <td>${r.reorder_point}</td>
+      <td><a class="btn tiny" href="/purchases">Reorder</a></td>
+    </tr>
+  `).join('');
+}
+loadDashboard();
+</script>
+
+<!-- ===================== NEW SALE MODAL (Dialog) ===================== -->
+<!-- New Sale Modal -->
+<div id="saleModal" class="modal-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-card fancy">
+    <div class="modal-head">
+      <div>
+        <h3 style="margin:0">New sale</h3>
+        <p class="subtitle" style="margin:.15rem 0 0">Pick products, adjust quantity & price, then record the sale.</p>
+      </div>
+      <button type="button" class="btn tiny ghost" id="saleClose" aria-label="Close">✕</button>
+    </div>
+    <!-- (rest of modal content unchanged) -->
+    <!-- Product picker -->
+    <div class="panel" style="margin:0 0 .8rem 0">
+      <div class="panel-head">
+        <h4 style="margin:0">Find products</h4>
+        <input id="saleSearch" placeholder="Search by name or SKU" style="max-width:300px; padding:.5rem .6rem; border-radius:.6rem; border:1px solid var(--border); background:#0b1220; color:var(--text)"/>
+      </div>
+      <div class="table-wrap" style="max-height: 35vh; overflow:auto">
+        <table class="tbl">
+          <thead><tr><th>SKU</th><th>Name</th><th>In stock</th><th>Price</th><th>Add</th></tr></thead>
+          <tbody id="salePickBody"><tr><td colspan="5">Loading…</td></tr></tbody>
+        </table>
       </div>
     </div>
-  </section>
 
-  <section class="grid cards3" id="stats">
-    <article class="card">
-      <div class="card-icon">📚</div>
-      <div class="card-body">
-        <h3 id="statProducts">—</h3>
-        <p>Total Products</p>
+    <!-- Cart -->
+    <div class="panel" style="margin:0">
+      <div class="panel-head">
+        <h4 style="margin:0">Cart</h4>
+        <div class="actions">
+          <button class="btn tiny" id="saleClear">Clear</button>
+        </div>
       </div>
-    </article>
-    <article class="card">
-      <div class="card-icon">📦</div>
-      <div class="card-body">
-        <h3 id="statSkusLow">—</h3>
-        <p>Low / Reorder Needed</p>
+      <div class="table-wrap">
+        <table class="tbl">
+          <thead><tr><th>Item</th><th>Qty</th><th>Unit price</th><th>Subtotal</th><th></th></tr></thead>
+          <tbody id="saleCartBody"><tr><td colspan="5">No items</td></tr></tbody>
+          <tfoot>
+            <tr><th colspan="3" style="text-align:right">Total:</th><th id="saleTotal">0</th><th></th></tr>
+          </tfoot>
+        </table>
       </div>
-    </article>
-    <article class="card">
-      <div class="card-icon">📉</div>
-      <div class="card-body">
-        <h3 id="statOos">—</h3>
-        <p>Out of Stock</p>
+      <div style="display:flex; justify-content:flex-end; gap:.6rem; margin-top:.8rem">
+        <button class="btn" id="saleCancel">Cancel</button>
+        <button class="btn primary" id="saleCheckout">Record sale</button>
       </div>
-    </article>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Low stock alerts</h2>
-      <a class="btn tiny" href="/products">Manage products →</a>
     </div>
-    <div class="table-wrap">
-      <table class="tbl" id="lowStockTable">
-        <thead>
-          <tr>
-            <th>SKU</th>
-            <th>Name</th>
-            <th>In Stock</th>
-            <th>Reorder Point</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="lowStockBody">
-          <tr><td colspan="5">Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+  </div>
+</div>
 
-  <section class="grid shortcuts">
-    <a class="shortcut" href="/products">
-      <span>🧮</span>
-      <div>
-        <h4>Products</h4>
-        <p>Add, edit, and organize your SKUs.</p>
-      </div>
-    </a>
-    <a class="shortcut" href="/sales">
-      <span>🧾</span>
-      <div>
-        <h4>Sales</h4>
-        <p>Capture sales and reduce stock automatically.</p>
-      </div>
-    </a>
-    <a class="shortcut" href="/purchases">
-      <span>📥</span>
-      <div>
-        <h4>Purchases</h4>
-        <p>Receive stock and update costs.</p>
-      </div>
-    </a>
-  </section>
+<!-- Modal logic -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const openBtn   = document.getElementById('openSaleBtn');
+  const modal     = document.getElementById('saleModal');
+  const closeBtn  = document.getElementById('saleClose');
+  const cancelBtn = document.getElementById('saleCancel');
+  const clearBtn  = document.getElementById('saleClear');
+  const searchEl  = document.getElementById('saleSearch');
+  const pickBody  = document.getElementById('salePickBody');
+  const cartBody  = document.getElementById('saleCartBody');
+  const totalCell = document.getElementById('saleTotal');
 
-  <script>
-  async function loadDashboard(){
-    const [stockRes, prodRes] = await Promise.all([
-      fetch('/api/stock'),
-      fetch('/api/products')
-    ]);
-    const stock = await stockRes.json();
-    const products = await prodRes.json();
+  // Hard-start closed (in case something left it open)
+  if (modal) {
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+  }
 
-    document.getElementById('statProducts').textContent = products.length;
-    const low = stock.filter(s => s.stock <= s.reorder_point && s.reorder_point > 0);
-    const oos = stock.filter(s => s.stock <= 0);
-    document.getElementById('statSkusLow').textContent = low.length;
-    document.getElementById('statOos').textContent = oos.length;
+  let PRODUCTS=[], STOCK=[], CART=[];
 
-    const tbody = document.getElementById('lowStockBody');
-    if (!low.length) {
-      tbody.innerHTML = '<tr><td colspan="5">🎉 All good! No items below reorder point.</td></tr>';
+  function toast(title, msg, type){
+    if (typeof showToast === 'function') return showToast(title, msg, type);
+    console.log(`[toast] ${title||''} ${msg||''}`);
+  }
+
+  function openModal(){
+    if (!modal) return;
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    if (searchEl) setTimeout(()=>searchEl.focus(), 0);
+  }
+  function closeModal(){
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    CART = [];
+    renderCart();
+  }
+
+  // Attach handlers only if elements exist
+  if (openBtn) {
+    openBtn.addEventListener('click', async () => {
+      await ensureData();
+      renderPicker('');
+      openModal();
+    });
+  }
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  if (modal) modal.addEventListener('click', (e)=>{ if(e.target === modal) closeModal(); });
+  document.addEventListener('keydown', (e)=>{ if(!modal.hidden && e.key === 'Escape') closeModal(); });
+
+  async function ensureData(){
+    const [pRes, sRes] = await Promise.all([fetch('/api/products'), fetch('/api/stock')]);
+    PRODUCTS = await pRes.json();
+    STOCK    = await sRes.json();
+  }
+  function stockMap(){ const m=new Map(); for(const s of STOCK) m.set(s.product_id, s.stock||0); return m; }
+
+  function renderPicker(filter){
+    const sm = stockMap();
+    const rows = PRODUCTS
+      .filter(p => (p.name + ' ' + p.sku).toLowerCase().includes((filter||'').toLowerCase()))
+      .map(p=>{
+        const st = sm.get(p.id) ?? 0;
+        const pr = Number(p.unit_price || 0).toFixed(2);
+        const pill = st<=0 ? 'danger' : (st <= (p.reorder_point||0) ? 'warn' : '');
+        return `<tr>
+          <td>${p.sku}</td>
+          <td>${p.name}</td>
+          <td><span class="pill ${pill}">${st}</span></td>
+          <td>${pr}</td>
+          <td><button class="btn tiny" data-add="${p.id}">Add</button></td>
+        </tr>`;
+      });
+    pickBody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="5">No matches</td></tr>';
+  }
+
+  function fmt(n){ return Number(n||0).toLocaleString(undefined,{minimumFractionDigits:0, maximumFractionDigits:2}); }
+  function renderCart(){
+    if(!CART.length){
+      cartBody.innerHTML = '<tr><td colspan="5">No items</td></tr>';
+      totalCell.textContent='0';
       return;
     }
-    tbody.innerHTML = low.map(r => `
+    cartBody.innerHTML = CART.map((it, idx)=>`
       <tr>
-        <td>${r.sku}</td>
-        <td>${r.name}</td>
-        <td><span class="pill ${r.stock<=0?'danger':'warn'}">${r.stock}</span></td>
-        <td>${r.reorder_point}</td>
-        <td><a class="btn tiny" href="/purchases">Reorder</a></td>
+        <td>${it.name}</td>
+        <td><input type="number" min="1" value="${it.qty}" class="qty" data-idx="${idx}" style="width:70px"></td>
+        <td><input type="number" min="0" step="0.01" value="${it.unit_price}" class="price" data-idx="${idx}" style="width:90px"></td>
+        <td>${fmt(it.qty * it.unit_price)}</td>
+        <td><button class="btn tiny" data-remove="${idx}">✕</button></td>
       </tr>
     `).join('');
+    const total = CART.reduce((a,b)=>a + (Number(b.qty)||0)*(Number(b.unit_price)||0), 0);
+    totalCell.textContent = fmt(total);
   }
-  loadDashboard();
-  </script>
+
+  // Picker add
+  pickBody.addEventListener('click', (e)=>{
+    const id = e.target?.dataset?.add;
+    if(!id) return;
+    const p = PRODUCTS.find(x=>x.id===Number(id));
+    if(!p) return;
+    const ex = CART.find(x=>x.product_id===p.id);
+    if(ex) ex.qty += 1;
+    else CART.push({product_id:p.id, name:p.name, qty:1, unit_price:Number(p.unit_price||0)});
+    renderCart();
+  });
+
+  // Cart inputs & remove
+  cartBody.addEventListener('input', (e)=>{
+    if(e.target.classList.contains('qty')){ const i=Number(e.target.dataset.idx); CART[i].qty = Math.max(1, parseInt(e.target.value||'1',10)); renderCart(); }
+    if(e.target.classList.contains('price')){ const i=Number(e.target.dataset.idx); CART[i].unit_price = Math.max(0, Number(e.target.value||'0')); renderCart(); }
+  });
+  cartBody.addEventListener('click', (e)=>{
+    const idx = e.target?.dataset?.remove;
+    if(idx===undefined) return;
+    CART.splice(Number(idx),1); renderCart();
+  });
+  if (clearBtn) clearBtn.addEventListener('click', ()=>{ CART=[]; renderCart(); });
+  if (searchEl) searchEl.addEventListener('input', e=>renderPicker(e.target.value||''));
+
+  // Checkout
+  const checkoutBtn = document.getElementById('saleCheckout');
+  if (checkoutBtn) {
+    checkoutBtn.addEventListener('click', async ()=>{
+      if(!CART.length) return toast('Cart is empty','Add items first','err');
+      const sm = stockMap();
+      for(const it of CART){
+        const have = sm.get(it.product_id) ?? 0;
+        if(it.qty > have) return toast('Insufficient stock', `${it.name}: have ${have}, need ${it.qty}`, 'err');
+      }
+      const payload = { items: CART.map(it=>({ product_id: it.product_id, qty: Number(it.qty||0), unit_price: Number(it.unit_price||0) })) };
+      let res;
+      try{
+        res = await fetch('/api/sales', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      }catch(e){ return toast('Network error', e.message || 'Could not reach server', 'err'); }
+
+      const ct = res.headers.get('content-type') || '';
+      if (res.redirected || (!ct.includes('application/json') && res.status === 200)) {
+        return toast('Please log in','Your session expired. Login and try again.','err');
+      }
+      if(res.ok){
+        toast('Sale recorded','Stock updated');
+        try{ await Promise.all([loadDashboard?.(), loadActivity?.()]); }catch(_){}
+        closeModal();
+      }else{
+        const t = await res.text();
+        toast('Failed to record sale', t || `HTTP ${res.status}`, 'err');
+      }
+    });
+  }
+});
+</script>
 
 {% endif %}
 {% endblock %}

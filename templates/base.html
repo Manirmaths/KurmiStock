@@ -10,46 +10,39 @@
   <title>KurmiStock AI</title>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo">📦</span>
-      <a class="brand-name" href="/">KurmiStock <strong>AI</strong></a>
-    </div>
+<header class="topbar">
+  <!-- Brand -->
+  <div class="brand">
+    <span class="logo">📦</span>
+    <a class="brand-name" href="/">KurmiStock <span class="accent">AI</span></a>
+  </div>
 
+  <!-- Nav -->
+  {% if current_user.is_authenticated %}
+    <nav class="navlinks">
+      <a href="/dashboard"  class="nav-item {{ 'active' if request.path.startswith('/dashboard') else '' }}">Dashboard</a>
+      <a href="/products"   class="nav-item {{ 'active' if request.path.startswith('/products')  else '' }}">Products</a>
+      <a href="/sales"      class="nav-item {{ 'active' if request.path.startswith('/sales')     else '' }}">Sales</a>
+      <a href="/purchases"  class="nav-item {{ 'active' if request.path.startswith('/purchases') else '' }}">Purchases</a>
+    </nav>
+  {% else %}
+    <nav class="navlinks">
+      <a href="{{ url_for('auth.login_form') }}"    class="nav-item {{ 'active' if request.path.startswith('/auth/login')    else '' }}">Login</a>
+      <a href="{{ url_for('auth.register_form') }}" class="nav-item {{ 'active' if request.path.startswith('/auth/register') else '' }}">Sign up</a>
+    </nav>
+  {% endif %}
+
+  <!-- Tools / Logout -->
+  <div class="righttools">
+    <span id="offlineBadge" hidden class="badge warn">Offline</span>
     {% if current_user.is_authenticated %}
-      <nav class="navlinks">
-        <a href="/dashboard">Dashboard</a>
-        <a href="/products">Products</a>
-        <a href="/sales">Sales</a>
-        <a href="/purchases">Purchases</a>
-      </nav>
-    {% else %}
-      <nav class="navlinks">
-        <a href="/auth/login">Login</a>
-        <a href="/auth/register">Sign up</a>
-      </nav>
+      <form method="post" action="{{ url_for('auth.logout_post') }}" onsubmit="return handleLogout(event)">
+        <button class="btn logout" title="Sign out">⎋ Logout</button>
+      </form>
     {% endif %}
+  </div>
+</header>
 
-    <div class="righttools">
-      <span id="offlineBadge" hidden class="badge warn">Offline</span>
-      {% if current_user.is_authenticated %}
-        <form method="post" action="{{ url_for('auth.logout_post') }}" onsubmit="return handleLogout(event)">
-  <button class="btn ghost" title="Sign out">⎋ Logout</button>
-</form>
-<script>
-async function handleLogout(e){
-  e.preventDefault();
-  try { await fetch(e.target.action, { method: 'POST', credentials: 'same-origin' }); } catch {}
-  if (navigator.serviceWorker?.controller) {
-    navigator.serviceWorker.controller.postMessage('CLEAR_CACHES');
-  }
-  location.replace('{{ url_for("auth.login_form") }}');
-  return false;
-}
-</script>
-      {% endif %}
-    </div>
-  </header>
 
   <main class="container">
     {% block content %}{% endblock %}

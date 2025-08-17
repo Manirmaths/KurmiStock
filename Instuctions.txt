@@ -16,3 +16,5 @@ Visit https://manirmaths.pythonanywhere.com/
 First load will create app.db (SQLite) in your project folder.
 
 Go to /auth/register to create your first user.
+
+# Windows: .venv\Scripts\activate
