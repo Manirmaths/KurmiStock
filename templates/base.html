@@ -25,12 +25,19 @@
       <a href="/sales"      class="nav-item {{ 'active' if request.path.startswith('/sales')     else '' }}">Sales</a>
       <a href="/purchases"  class="nav-item {{ 'active' if request.path.startswith('/purchases') else '' }}">Purchases</a>
     </nav>
+    {% if current_user.is_authenticated and current_user.is_admin %}
+      <a href="/admin/users" class="nav-item {{ 'active' if request.path.startswith('/admin') else '' }}">Admin</a>
+    {% endif %}
   {% else %}
     <nav class="navlinks">
       <a href="{{ url_for('auth.login_form') }}"    class="nav-item {{ 'active' if request.path.startswith('/auth/login')    else '' }}">Login</a>
       <a href="{{ url_for('auth.register_form') }}" class="nav-item {{ 'active' if request.path.startswith('/auth/register') else '' }}">Sign up</a>
     </nav>
   {% endif %}
+
+  {% if current_user.is_manager %}
+  <a href="/admin/users" class="nav-item {{ 'active' if request.path.startswith('/admin') else '' }}">Admin</a>
+{% endif %}
 
   <!-- Tools / Logout -->
   <div class="righttools">

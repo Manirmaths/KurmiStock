@@ -5,7 +5,7 @@ from models import *
 from routes_auth import auth_bp
 from routes_api import api_bp
 from flask_login import login_required, current_user
-
+from routes_admin import admin_bp
 
 def create_app():
     app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -19,6 +19,7 @@ def create_app():
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(admin_bp) 
 
     @app.route("/")
     def index():

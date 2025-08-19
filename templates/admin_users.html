@@ -1,0 +1,20 @@
+<!-- templates/admin_users.html -->
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>Users ({{ current_user.store_name }})</h2>
+    <a class="btn primary" href="{{ url_for('admin.users_new_form') }}">➕ Add user</a>
+  </div>
+  <div class="table-wrap">
+    <table class="tbl">
+      <thead><tr><th>Email</th><th>Role</th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr><td>{{ u.email }}</td><td>{{ u.role }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

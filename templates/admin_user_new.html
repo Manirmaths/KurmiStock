@@ -1,0 +1,21 @@
+<!-- templates/admin_user_new.html -->
+{% extends "base.html" %}
+{% block content %}
+<section class="panel" style="max-width:560px">
+  <div class="panel-head"><h2>Add user</h2></div>
+  <form method="post" action="{{ url_for('admin.users_create') }}" class="auth-form">
+    <label><span>Email</span><input type="email" name="email" required></label>
+    <label><span>Password</span><input type="password" name="password" required></label>
+    <label><span>Role</span>
+      <select name="role">
+        <option value="staff" selected>Staff</option>
+        <option value="manager">Manager</option>
+      </select>
+    </label>
+    <div class="actions">
+      <a class="btn" href="{{ url_for('admin.users_list') }}">Cancel</a>
+      <button class="btn primary" type="submit">Create</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

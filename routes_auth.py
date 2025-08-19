@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_user, logout_user, login_required, current_user
 from urllib.parse import urlparse, urljoin
 from extensions import db
-from models import User
+from models import User, Business
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -63,13 +63,19 @@ def register_post():
         flash("Email already registered.", "warning")
         return redirect(url_for("auth.register_form"))
 
-    u = User(email=email, store_name=store_name)
+    # Create Business
+    biz = Business(name=store_name)
+    db.session.add(biz); db.session.flush()
+
+    # Create Manager in that business
+    u = User(email=email, store_name=store_name, role="manager", business_id=biz.id)
     u.set_password(password)
     db.session.add(u)
     db.session.commit()
 
     login_user(u)
     return redirect(url_for("dashboard"))
+
 
 @auth_bp.post("/logout")
 @login_required

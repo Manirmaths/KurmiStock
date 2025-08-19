@@ -18,3 +18,6 @@ First load will create app.db (SQLite) in your project folder.
 Go to /auth/register to create your first user.
 
 # Windows: .venv\Scripts\activate
+
+# Run the command directly via Python (bypasses 'flask' discoverability)
+python manage.py create-user
